@@ -1,14 +1,13 @@
 {
   "name": "follow-builders-scripts",
   "version": "1.0.0",
-  "description": "Scripts for Follow Builders skill — feed generation, digest preparation, delivery",
+  "description": "Scripts for discovering noteworthy GitHub projects and preparing product-idea digests",
   "type": "module",
   "scripts": {
     "generate-feed": "node generate-feed.js",
-    "prepare-digest": "node prepare-digest.js"
-  },
-  "dependencies": {
-    "dotenv": "^16.4.0",
-    "proper-lockfile": "^4.1.0"
+    "generate-github-feed": "node generate-feed.js --github-only",
+    "preview-github-feed": "node generate-feed.js --github-feed-dry-run",
+    "prepare-digest": "node prepare-digest.js",
+    "validate-github": "node generate-feed.js --validate-github-enrichment && node prepare-digest.js --validate-github-preparation"
   }
 }

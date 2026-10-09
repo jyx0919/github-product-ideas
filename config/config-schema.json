@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "User configuration for Follow Builders skill. Stored at ~/.follow-builders/config.json",
+  "title": "GitHub Product Ideas user configuration",
+  "description": "User preferences for the GitHub Product Ideas skill. Stored at ~/.follow-builders/config.json",
   "type": "object",
   "properties": {
     "platform": {
@@ -16,14 +17,14 @@
     },
     "timezone": {
       "type": "string",
-      "default": "America/Los_Angeles",
+      "default": "Asia/Shanghai",
       "description": "IANA timezone string for scheduling (e.g. America/New_York, Asia/Shanghai)"
     },
     "frequency": {
       "type": "string",
       "enum": ["daily", "weekly"],
-      "default": "daily",
-      "description": "How often to deliver the digest"
+      "default": "weekly",
+      "description": "How often to deliver the digest. The central feed currently refreshes weekly, so daily delivery may repeat the same edition"
     },
     "deliveryTime": {
       "type": "string",
@@ -53,6 +54,54 @@
         "email": {
           "type": "string",
           "description": "Email address to send digest to (only for email method)"
+        }
+      }
+    },
+    "githubPreferences": {
+      "type": "object",
+      "description": "User preferences for filtering and presenting projects from the published central GitHub feed",
+      "properties": {
+        "enabledGroups": {
+          "type": "array",
+          "description": "GitHub project categories included in the digest",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ai-products",
+              "developer-tools",
+              "productivity-automation",
+              "open-source-products",
+              "data-infrastructure"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": [
+            "ai-products",
+            "developer-tools",
+            "productivity-automation",
+            "open-source-products",
+            "data-infrastructure"
+          ]
+        },
+        "lookbackDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "default": 7,
+          "description": "Reserved lookback preference. The current client cannot expand or refetch the central feed based on this value"
+        },
+        "maxProjectsPerDigest": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 10,
+          "description": "Maximum number of projects included in one digest"
+        },
+        "allowPreviouslyFeatured": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reserved repeat preference. Current deduplication is global in the central feed rather than independent for each user"
         }
       }
     },

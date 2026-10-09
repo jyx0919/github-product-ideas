@@ -1,18 +1,20 @@
-name: Generate Feeds
+name: Generate GitHub Project Feed
 
 on:
   schedule:
-    # All feeds (tweets, podcasts, blogs): once daily at 6:17am UTC
-    - cron: '17 6 * * *'
+    # GitHub projects: every Monday at 8:17am Asia/Shanghai (00:17 UTC)
+    - cron: '17 0 * * 1'
   workflow_dispatch:
     inputs:
       mode:
         description: 'What to fetch'
         required: false
-        default: 'all'
+        default: 'github-only'
         type: choice
         options:
-          - all
+          - github-only
+          - github-feed-dry-run
+          - legacy-all
           - tweets-only
           - podcasts-only
           - blogs-only
@@ -30,24 +32,46 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: cd scripts && npm install
-
       - name: Generate feeds
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           POD2TXT_API_KEY: ${{ secrets.POD2TXT_API_KEY }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.mode }}" != "all" ]; then
-            cd scripts && node generate-feed.js --${{ inputs.mode }}
+          cd scripts
+
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            mode="github-only"
           else
-            cd scripts && node generate-feed.js
+            mode="${{ inputs.mode }}"
           fi
+
+          case "$mode" in
+            github-only)
+              node generate-feed.js --github-only
+              ;;
+            github-feed-dry-run)
+              node generate-feed.js --github-feed-dry-run
+              ;;
+            legacy-all)
+              node generate-feed.js
+              ;;
+            tweets-only|podcasts-only|blogs-only)
+              node generate-feed.js --"$mode"
+              ;;
+            *)
+              echo "Unsupported mode: $mode" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Commit and push feeds
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add feed-x.json feed-podcasts.json feed-blogs.json state-feed.json
+          if [ -f feed-github.json ]; then
+            git add feed-github.json
+          fi
           git diff --cached --quiet || git commit -m "chore: update feeds [skip ci]"
           git push

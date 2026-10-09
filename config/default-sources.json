@@ -1,4 +1,85 @@
 {
+  "github": {
+    "discoveryGroups": [
+      {
+        "id": "ai-products",
+        "label": "AI Products",
+        "enabled": true,
+        "keywords": [
+          "AI assistant",
+          "AI agent",
+          "LLM application"
+        ],
+        "topics": [
+          "artificial-intelligence",
+          "llm",
+          "ai-agent"
+        ]
+      },
+      {
+        "id": "developer-tools",
+        "label": "Developer Tools",
+        "enabled": true,
+        "keywords": [
+          "developer tool",
+          "coding agent",
+          "code generation"
+        ],
+        "topics": [
+          "developer-tools",
+          "coding-assistant",
+          "code-generation"
+        ]
+      },
+      {
+        "id": "productivity-automation",
+        "label": "Productivity and Automation",
+        "enabled": true,
+        "keywords": [
+          "productivity tool",
+          "workflow automation",
+          "personal automation"
+        ],
+        "topics": [
+          "productivity",
+          "automation",
+          "workflow"
+        ]
+      },
+      {
+        "id": "open-source-products",
+        "label": "Open Source Products",
+        "enabled": true,
+        "keywords": [
+          "open source SaaS",
+          "self hosted application",
+          "indie product"
+        ],
+        "topics": [
+          "self-hosted",
+          "saas",
+          "open-source"
+        ]
+      },
+      {
+        "id": "data-infrastructure",
+        "label": "Data and Infrastructure",
+        "enabled": true,
+        "keywords": [
+          "data platform",
+          "AI infrastructure",
+          "database tool"
+        ],
+        "topics": [
+          "data-engineering",
+          "database",
+          "infrastructure"
+        ]
+      }
+    ],
+    "ignoredRepositories": [],
+    "ignoredOwners": []
+  },
   "podcasts": [
     {
       "name": "Latent Space",

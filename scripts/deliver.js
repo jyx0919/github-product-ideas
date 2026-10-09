@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // ============================================================================
-// Follow Builders — Delivery Script
+// GitHub Product Ideas — Delivery Script
 // ============================================================================
 // Sends a digest to the user via their chosen delivery method.
 // Supports: Telegram bot, Email (via Resend), or stdout (default).
@@ -24,13 +24,25 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { config as loadEnv } from 'dotenv';
 
 // -- Constants ---------------------------------------------------------------
 
 const USER_DIR = join(homedir(), '.follow-builders');
-const CONFIG_PATH = join(USER_DIR, 'config.json');
-const ENV_PATH = join(USER_DIR, '.env');
+const CONFIG_PATH =
+  process.env.FOLLOW_BUILDERS_CONFIG_PATH || join(USER_DIR, 'config.json');
+const ENV_PATH =
+  process.env.FOLLOW_BUILDERS_ENV_PATH || join(USER_DIR, '.env');
+const DIGEST_NAME = 'GitHub Product Ideas';
+
+function loadEnvironment(path) {
+  if (!existsSync(path)) return;
+  if (typeof process.loadEnvFile !== 'function') {
+    throw new Error(
+      'This Node.js version cannot load .env files; use Node.js 20.12 or newer'
+    );
+  }
+  process.loadEnvFile(path);
+}
 
 // -- Read input --------------------------------------------------------------
 
@@ -134,9 +146,9 @@ async function sendEmail(text, apiKey, toEmail) {
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      from: 'AI Builders Digest <digest@resend.dev>',
+      from: `${DIGEST_NAME} <digest@resend.dev>`,
       to: [toEmail],
-      subject: `AI Builders Digest — ${new Date().toLocaleDateString('en-US', {
+      subject: `${DIGEST_NAME} — ${new Date().toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
       })}`,
       text: text
@@ -153,7 +165,7 @@ async function sendEmail(text, apiKey, toEmail) {
 
 async function main() {
   // Load env and config
-  loadEnv({ path: ENV_PATH });
+  loadEnvironment(ENV_PATH);
 
   let config = {};
   if (existsSync(CONFIG_PATH)) {
@@ -179,7 +191,7 @@ async function main() {
         console.log(JSON.stringify({
           status: 'ok',
           method: 'telegram',
-          message: 'Digest sent to Telegram'
+          message: 'GitHub digest sent to Telegram'
         }));
         break;
       }
@@ -193,7 +205,7 @@ async function main() {
         console.log(JSON.stringify({
           status: 'ok',
           method: 'email',
-          message: `Digest sent to ${toEmail}`
+          message: `GitHub digest sent to ${toEmail}`
         }));
         break;
       }

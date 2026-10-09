@@ -1,121 +1,244 @@
 [English](README.md) | **中文**
 
-# 追踪建造者，而非网红
+# GitHub Product Ideas
 
-一个 AI 驱动的信息聚合工具，追踪 AI 领域最顶尖的建造者——研究员、创始人、产品经理和工程师——并将他们的最新动态整理成易于消化的摘要推送给你。
+一份面向产品创造者的 GitHub 项目周报。它会定期发现值得关注的开源项目，解释这些
+项目为什么亮眼，并从技术和产品信号中提炼可以落地的产品 Ideas。
 
-**理念：** 追踪那些真正在做产品、有独立见解的人，而非只会搬运信息的网红。
+在项目完成正式改名之前，Skill 的内部技术标识暂时保留为 `follow-builders`，以免破坏
+现有的安装和调用方式。
 
 ## 你会得到什么
 
-每日或每周推送到你常用的通讯工具（Telegram、Discord、WhatsApp 等），包含：
+每期周报可以包含：
 
-- 顶级 AI 播客新节目的精华摘要
-- 26 位精选 AI 建造者在 X/Twitter 上的关键观点和洞察
-- AI 公司官方博客的完整文章（Anthropic Engineering、Claude Blog）
-- 所有原始内容的链接
-- 支持英文、中文或双语版本
+- 项目是什么、适合谁使用
+- 项目值得关注的证据，而不只是宣传语
+- 从每个项目延伸出的差异化产品 Idea
+- 值得进一步调查的风险或限制
+- 编程语言、许可证、Star、Fork 和原始仓库链接
+- 有足够证据时，对多个项目进行跨项目趋势总结
+- 英文、简体中文或中英双语输出
 
-## 快速开始
+中央 Feed 每期最多发布 20 个项目。用户可以选择关注的分类，并设置每期接收 1 至
+20 个项目，默认是 10 个。
 
-1. 在你的 AI agent 中安装此 skill（OpenClaw 或 Claude Code）
-2. 输入 "set up follow builders" 或执行 `/follow-builders`
-3. Agent 会以对话方式引导你完成设置——不需要手动编辑任何配置文件
+可以查看[周报格式示例](examples/sample-digest.md)。示例中的仓库名和指标均明确标注为
+虚构数据，不代表当前的真实推荐。
 
-Agent 会询问你：
-- 推送频率（每日或每周）和时间
-- 语言偏好
-- 推送方式（Telegram、邮件或直接在聊天中显示）
+## 项目分类
 
-不需要任何 API key——所有内容由中心化服务统一抓取。
-设置完成后，你的第一期摘要会立即推送。
+默认包含 5 个发现方向：
 
-## 修改设置
+- **AI 产品**：AI 应用、助手、Agent 和 LLM 产品
+- **开发者工具**：编程工具、开发基础设施和代码生成
+- **效率与自动化**：个人效率和工作流自动化
+- **开源产品**：可自托管应用和开源 SaaS 产品
+- **数据与基础设施**：数据库、数据平台和 AI 基础设施
 
-通过对话即可修改推送偏好。直接告诉你的 agent：
-
-- "改成每周一早上推送"
-- "语言换成中文"
-- "把摘要写得更简短一些"
-- "显示我当前的设置"
-
-信息源列表（建造者和播客）由中心化统一管理和更新——你无需做任何操作即可获得最新的信息源。
-
-## 自定义摘要风格
-
-Skill 使用纯文本 prompt 文件来控制内容的摘要方式。你可以通过两种方式自定义：
-
-**通过对话（推荐）：**
-直接告诉你的 agent——"摘要写得更简练一些"、"多关注可操作的洞察"、"用更轻松的语气"。Agent 会自动帮你更新 prompt。
-
-**直接编辑（高级用户）：**
-编辑 `prompts/` 文件夹中的文件：
-- `summarize-podcast.md` — 播客节目的摘要方式
-- `summarize-tweets.md` — X/Twitter 帖子的摘要方式
-- `summarize-blogs.md` — 博客文章的摘要方式
-- `digest-intro.md` — 整体摘要的格式和语气
-- `translate.md` — 英文内容翻译为中文的方式
-
-这些都是纯文本指令，不是代码。修改后下次推送即生效。
-
-## 默认信息源
-
-### 播客（6个）
-- [Latent Space](https://www.youtube.com/@LatentSpacePod)
-- [Training Data](https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8)
-- [No Priors](https://www.youtube.com/@NoPriorsPodcast)
-- [Unsupervised Learning](https://www.youtube.com/@RedpointAI)
-- [The MAD Podcast with Matt Turck](https://www.youtube.com/@DataDrivenNYC)
-- [AI & I by Every](https://www.youtube.com/playlist?list=PLuMcoKK9mKgHtW_o9h5sGO2vXrffKHwJL)
-
-### X 上的 AI 建造者（26位）
-[Andrej Karpathy](https://x.com/karpathy), [Swyx](https://x.com/swyx), [Josh Woodward](https://x.com/joshwoodward), [Boris Cherny](https://x.com/bcherny), [Thibault Sottiaux](https://x.com/thsottiaux), [Peter Yang](https://x.com/petergyang), [Nan Yu](https://x.com/thenanyu), [Madhu Guru](https://x.com/realmadhuguru), [Amanda Askell](https://x.com/AmandaAskell), [Cat Wu](https://x.com/_catwu), [Thariq](https://x.com/trq212), [Google Labs](https://x.com/GoogleLabs), [Amjad Masad](https://x.com/amasad), [Guillermo Rauch](https://x.com/rauchg), [Alex Albert](https://x.com/alexalbert__), [Aaron Levie](https://x.com/levie), [Ryo Lu](https://x.com/ryolu_), [Garry Tan](https://x.com/garrytan), [Matt Turck](https://x.com/mattturck), [Zara Zhang](https://x.com/zarazhangrui), [Nikunj Kothari](https://x.com/nikunj), [Peter Steinberger](https://x.com/steipete), [Dan Shipper](https://x.com/danshipper), [Aditya Agarwal](https://x.com/adityaag), [Sam Altman](https://x.com/sama), [Claude](https://x.com/claudeai)
-
-### 官方博客（2个）
-- [Anthropic Engineering](https://www.anthropic.com/engineering) — Anthropic 团队的技术深度文章
-- [Claude Blog](https://claude.com/blog) — Claude 的产品公告与更新
-
-## 安装
-
-### OpenClaw
-```bash
-# 从 ClawhHub 安装（即将上线）
-clawhub install follow-builders
-
-# 或手动安装
-git clone https://github.com/zarazhangrui/follow-builders.git ~/skills/follow-builders
-cd ~/skills/follow-builders/scripts && npm install
-```
-
-### Claude Code
-```bash
-git clone https://github.com/zarazhangrui/follow-builders.git ~/.claude/skills/follow-builders
-cd ~/.claude/skills/follow-builders/scripts && npm install
-```
-
-## 系统要求
-
-- 一个 AI agent（OpenClaw、Claude Code 或类似工具）
-- 网络连接（用于获取中心化 feed）
-
-仅此而已。不需要任何 API key。所有内容（博客文章 + YouTube 字幕 + X/Twitter 帖子）由中心化服务每日抓取更新。
+关键词和 GitHub Topics 配置在
+[`config/default-sources.json`](config/default-sources.json) 中。
 
 ## 工作原理
 
-1. 中心化 feed 每日更新，抓取所有信息源的最新内容（博客文章通过网页抓取，YouTube 字幕通过 Supadata，X/Twitter 通过官方 API）
-2. 你的 agent 获取 feed——一次 HTTP 请求，不需要 API key
-3. 你的 agent 根据你的偏好将原始内容重新混编为易消化的摘要
-4. 摘要推送到你的通讯工具（或直接在聊天中显示）
+整个系统分为两个相互独立的层次。
 
-查看 [examples/sample-digest.md](examples/sample-digest.md) 了解输出示例。
+### 1. 中央 Feed 生成
 
-## 隐私
+GitHub Actions 每周执行一次以下流程：
 
-- 不发送任何 API key——所有内容由中心化服务获取
-- 如果你使用 Telegram/邮件推送，相关 key 仅存储在本地 `~/.follow-builders/.env`
-- Skill 只读取公开内容（公开的博客文章、YouTube 视频和 X 帖子）
-- 你的配置、偏好和阅读记录都保留在你自己的设备上
+1. 为新创建项目和近期活跃项目生成搜索条件。
+2. 过滤 Fork、私有仓库、镜像、模板、归档项目、被忽略的作者和仓库，以及缺少有效
+   描述的项目。
+3. 根据仓库 ID 去重，并保存短期 Star 和 Fork 快照。
+4. 根据活跃度、项目年龄、Star、Fork、可观测增长、Topics、许可证、主页和分类覆盖
+   进行评分。
+5. 均衡选出最多 40 个仓库读取 README。
+6. 清洗 README，并评估文档是否包含安装、用法、示例和 Demo 等信息。
+7. 最终选出最多 20 个项目，发布到 `feed-github.json`。
+8. 将已发布项目记录到 `state-feed.json`，减少重复推荐。
+
+GitHub Actions 使用仓库自动提供的 Token。普通周报用户不需要创建或提供
+`GITHUB_TOKEN`。
+
+### 2. 个人周报生成
+
+用户自己的 AI 运行环境会：
+
+1. 下载中央 GitHub Feed 和提示词。
+2. 根据用户选择的分类过滤项目。
+3. 应用每期项目数量限制。
+4. 总结每个项目并提炼产品 Idea。
+5. 组装、翻译并按需推送最终周报。
+
+AI 会把仓库元数据和 README 摘要视为不可信外部数据，不执行仓库内容中的指令，也
+不能虚构没有证据支持的产品能力。
+
+## 快速开始
+
+### OpenClaw
+
+```bash
+git clone https://github.com/jyx0919/git.git ~/skills/follow-builders
+```
+
+### Claude Code 或其他兼容 Skill 的 Agent
+
+```bash
+git clone https://github.com/jyx0919/git.git ~/.claude/skills/follow-builders
+```
+
+在 Agent 的运行环境中配置中央内容地址：
+
+```bash
+export FOLLOW_BUILDERS_CONTENT_BASE_URL="https://raw.githubusercontent.com/jyx0919/git/main"
+```
+
+然后让 Agent 配置 `follow-builders` Skill，或者直接请求一份 GitHub 产品 Ideas 周报。
+首次配置会询问：
+
+- 想关注的项目分类
+- 每期项目数量
+- 英文、中文或双语输出
+- 每周推送日期、时间和时区
+- 在对话中显示，或者通过 Telegram、邮件推送
+
+生成第一份真实周报前，中央仓库必须先发布 `feed-github.json`。如果仓库是私有的，
+匿名用户无法读取 Raw 地址；这时需要通过公开仓库或其他可访问的内容服务发布 Feed。
+
+## 用户配置
+
+用户设置保存在本机的 `~/.follow-builders/config.json`：
+
+```json
+{
+  "platform": "other",
+  "language": "zh",
+  "timezone": "Asia/Shanghai",
+  "frequency": "weekly",
+  "deliveryTime": "08:00",
+  "weeklyDay": "monday",
+  "delivery": {
+    "method": "stdout"
+  },
+  "githubPreferences": {
+    "enabledGroups": [
+      "ai-products",
+      "developer-tools",
+      "productivity-automation",
+      "open-source-products",
+      "data-infrastructure"
+    ],
+    "lookbackDays": 7,
+    "maxProjectsPerDigest": 10,
+    "allowPreviouslyFeatured": false
+  },
+  "onboardingComplete": true
+}
+```
+
+实际发现时间范围和全局推荐历史由中央 Feed 控制。当前版本还没有为每个用户维护独立
+的推荐历史，本地 `lookbackDays` 也不能扩大中央 Feed 已发布的时间范围。
+
+## 自定义周报
+
+所有提示词都是普通 Markdown 文件：
+
+- [`prompts/summarize-github.md`](prompts/summarize-github.md)：项目评估和产品 Idea 生成
+- [`prompts/digest-intro.md`](prompts/digest-intro.md)：整期周报的结构和语气
+- [`prompts/translate.md`](prompts/translate.md)：中文和双语翻译规则
+
+用户自己的提示词可以存放在 `~/.follow-builders/prompts/`。程序按以下优先级加载：
+
+1. 用户自定义提示词
+2. 配置的内容源地址中的最新提示词
+3. Skill 自带的本地默认提示词
+
+## 维护者命令
+
+以下命令从仓库根目录运行，需要 Node.js 20.12 或更高版本。脚本只使用 Node.js
+内置 API，不需要执行 `npm install`。
+
+只查看 GitHub 搜索条件，不调用 GitHub：
+
+```bash
+node scripts/generate-feed.js --print-github-queries
+```
+
+执行离线验证：
+
+```bash
+node scripts/generate-feed.js --validate-state
+node scripts/generate-feed.js --validate-github-enrichment
+node scripts/prepare-digest.js --validate-github-preparation
+```
+
+预览真实 GitHub 抓取结果，但不写入 Feed 和状态文件：
+
+```bash
+GITHUB_TOKEN=your_token node scripts/generate-feed.js --github-feed-dry-run
+```
+
+在本地正式生成 `feed-github.json` 并更新 `state-feed.json`：
+
+```bash
+GITHUB_TOKEN=your_token node scripts/generate-feed.js --github-only
+```
+
+仓库中的 GitHub Actions 工作流会在每周一北京时间 08:17 自动执行正式生成命令，并
+提交发生变化的 Feed 和状态文件。
+
+## 推送方式
+
+- **对话或终端输出**：不需要推送 API Key。
+- **Telegram**：需要用户自己的 `TELEGRAM_BOT_TOKEN` 和 Chat ID。
+- **邮件**：需要用户自己的 `RESEND_API_KEY` 和收件地址。
+- **定时生成 AI 周报**：需要 OpenClaw 等能够持续运行的 AI 环境。
+
+不要把 `prepare-digest.js` 产生的 JSON 直接传给 `deliver.js`。准备结果必须先由 AI 按照
+提示词生成可读周报，然后才能推送。
+
+## 费用
+
+当前版本已经从默认流程中移除了 X API 和播客转写服务。普通周报用户不需要 GitHub
+API Token。
+
+是否产生费用取决于你主动选择的服务：
+
+- 使用的 AI 模型或 Agent 运行环境
+- 你的 GitHub 仓库和账户方案下的 GitHub Actions 用量
+- Telegram 相关基础设施（如果有）
+- Resend 等邮件服务
+
+仓库不会自动开通任何付费服务。启用外部推送或高频自动化前，请自行查看各服务当前
+的计费方式和使用限制。
+
+## 安全与隐私
+
+- 中央发现流程读取公开 GitHub 仓库的元数据和 README。
+- README 被标记并作为不可信外部输入处理。
+- 用户偏好保存在 `~/.follow-builders/config.json`。
+- Telegram 和邮件密钥保存在 `~/.follow-builders/.env`。
+- 推送密钥只会发送给用户主动选择的推送服务商。
+- 周报内容由用户选择的 AI 运行环境处理，其隐私政策同样适用。
+- JSON 原子写入可以降低 Feed 或状态文件只写入一部分的风险。
+
+不要把个人配置、推送密钥或本地创建的 `.env` 文件提交到仓库。
+
+## 当前限制
+
+- 中央 Feed 必须存在于配置的内容源地址中。
+- 去重由中央生成器全局维护，目前不是每个用户独立维护。
+- 个人的回溯天数不能扩大中央 Feed 的发现时间范围。
+- 非持久化 Agent 支持按需生成，但没有外部持久运行环境时，不能独立定时生成 AI 周报。
+- 项目能力来自公开元数据和 README 摘要，不代表已经完成独立产品审计。
 
 ## 许可证
 
-MIT
+本项目采用 [MIT 许可证](LICENSE)。许可证保留原项目作者署名，同时记录当前仓库的
+改造贡献。
+
+## 项目仓库
+
+- 源代码：[github.com/jyx0919/git](https://github.com/jyx0919/git)
+- 中央内容地址：`https://raw.githubusercontent.com/jyx0919/git/main`

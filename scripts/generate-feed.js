@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 
 // ============================================================================
-// Follow Builders — Central Feed Generator
+// GitHub Product Ideas — Central Feed Generator
 // ============================================================================
-// Runs on GitHub Actions (daily at 6am UTC) to fetch content and publish
-// feed-x.json, feed-podcasts.json, and feed-blogs.json.
+// The primary GitHub Actions workflow runs weekly to discover noteworthy public
+// repositories and publish feed-github.json.
 //
-// Deduplication: tracks previously seen tweet IDs, episode GUIDs, and article
-// URLs in state-feed.json so content is never repeated across runs.
+// Repository snapshots and previously featured projects are tracked in
+// state-feed.json for trend scoring and global deduplication.
 //
-// Usage: node generate-feed.js [--tweets-only | --podcasts-only | --blogs-only]
-// Env vars needed: X_BEARER_TOKEN, POD2TXT_API_KEY
+// Primary usage:
+//   node generate-feed.js --github-feed-dry-run
+//   node generate-feed.js --github-only
+//   node generate-feed.js --validate-github-enrichment
+//
+// GITHUB_TOKEN is required for reliable live GitHub generation. Legacy X,
+// podcast, and blog modes remain available as compatibility-only entry points;
+// they use X_BEARER_TOKEN and POD2TXT_API_KEY when selected.
 // ============================================================================
 
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, rename } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 
@@ -21,6 +27,8 @@ import { join } from "path";
 
 const POD2TXT_BASE = "https://pod2txt.vercel.app/api";
 const X_API_BASE = "https://api.x.com/2";
+const GITHUB_API_BASE = "https://api.github.com";
+const GITHUB_API_VERSION = "2026-03-10";
 // Some RSS hosts (notably Substack) block non-browser user agents from cloud IPs.
 // Using a real Chrome UA avoids 403 errors in GitHub Actions.
 const RSS_USER_AGENT =
@@ -33,43 +41,121 @@ const MAX_ARTICLES_PER_BLOG = 3;
 const X_USER_LOOKUP_BATCH_SIZE = 5;
 const X_RETRY_STATUSES = new Set([500, 502, 503, 504]);
 const X_RETRY_ATTEMPTS = 3;
+const GITHUB_SEARCH_RESULTS_PER_QUERY = 20;
+const GITHUB_RETRY_STATUSES = new Set([500, 502, 503, 504]);
+const GITHUB_RETRY_ATTEMPTS = 3;
+const GITHUB_DEFAULT_LOOKBACK_DAYS = 7;
+const GITHUB_ENRICHMENT_LIMIT = 40;
+const GITHUB_ENRICHMENT_LIMIT_PER_GROUP = 8;
+const GITHUB_FEED_LIMIT = 20;
+const GITHUB_FEED_LIMIT_PER_GROUP = 4;
+const GITHUB_README_MIN_CHARACTERS = 300;
+const GITHUB_README_MAX_CHARACTERS = 12000;
+const STATE_VERSION = 2;
+const REPOSITORY_SNAPSHOT_RETENTION_DAYS = 30;
 
 // State file lives in the repo root so it gets committed by GitHub Actions
 const SCRIPT_DIR = decodeURIComponent(new URL(".", import.meta.url).pathname);
-const STATE_PATH = join(SCRIPT_DIR, "..", "state-feed.json");
+const STATE_PATH =
+  process.env.FOLLOW_BUILDERS_STATE_PATH ||
+  join(SCRIPT_DIR, "..", "state-feed.json");
+const GITHUB_FEED_PATH =
+  process.env.FOLLOW_BUILDERS_GITHUB_FEED_PATH ||
+  join(SCRIPT_DIR, "..", "feed-github.json");
 
 // -- State Management --------------------------------------------------------
 
-// Tracks which tweet IDs and video IDs we've already included in feeds
-// so we never send the same content twice across runs.
+// Keeps legacy deduplication data while the feed migrates to GitHub projects.
+// Repository snapshots are short-lived trend data; featured repositories are
+// retained separately so previously recommended projects stay deduplicated.
+
+function createEmptyState() {
+  return {
+    version: STATE_VERSION,
+    seenTweets: {},
+    seenVideos: {},
+    seenArticles: {},
+    repositorySnapshots: {},
+    featuredRepositories: {},
+    lastSuccessfulRun: null,
+  };
+}
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+}
+
+function normalizeState(state) {
+  const emptyState = createEmptyState();
+  const source = asRecord(state);
+
+  return {
+    ...emptyState,
+    ...source,
+    version: STATE_VERSION,
+    seenTweets: asRecord(source.seenTweets),
+    seenVideos: asRecord(source.seenVideos),
+    seenArticles: asRecord(source.seenArticles),
+    repositorySnapshots: asRecord(source.repositorySnapshots),
+    featuredRepositories: asRecord(source.featuredRepositories),
+  };
+}
+
+async function writeJSONAtomic(path, value) {
+  const temporaryPath = `${path}.tmp`;
+  await writeFile(temporaryPath, JSON.stringify(value, null, 2));
+  await rename(temporaryPath, path);
+}
 
 async function loadState() {
   if (!existsSync(STATE_PATH)) {
-    return { seenTweets: {}, seenVideos: {}, seenArticles: {} };
+    return createEmptyState();
   }
   try {
     const state = JSON.parse(await readFile(STATE_PATH, "utf-8"));
-    // Ensure seenArticles exists for older state files
-    if (!state.seenArticles) state.seenArticles = {};
-    return state;
-  } catch {
-    return { seenTweets: {}, seenVideos: {}, seenArticles: {} };
+    return normalizeState(state);
+  } catch (err) {
+    throw new Error(`Failed to load state file: ${err.message}`);
   }
 }
 
 async function saveState(state) {
-  // Prune entries older than 7 days to prevent the file from growing forever
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  for (const [id, ts] of Object.entries(state.seenTweets)) {
-    if (ts < cutoff) delete state.seenTweets[id];
+  const normalized = normalizeState(state);
+
+  // Keep the legacy feeds working during migration.
+  const legacyCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (const key of ["seenTweets", "seenVideos", "seenArticles"]) {
+    for (const [id, timestamp] of Object.entries(normalized[key])) {
+      if (timestamp < legacyCutoff) delete normalized[key][id];
+    }
   }
-  for (const [id, ts] of Object.entries(state.seenVideos)) {
-    if (ts < cutoff) delete state.seenVideos[id];
+
+  // Retain enough history to calculate daily and weekly repository growth.
+  const snapshotCutoff =
+    Date.now() -
+    REPOSITORY_SNAPSHOT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  for (const [repositoryId, repository] of Object.entries(
+    normalized.repositorySnapshots,
+  )) {
+    const snapshots = Array.isArray(repository?.snapshots)
+      ? repository.snapshots
+      : [];
+
+    repository.snapshots = snapshots.filter(
+      (snapshot) =>
+        new Date(snapshot?.capturedAt).getTime() >= snapshotCutoff,
+    );
+
+    if (repository.snapshots.length === 0) {
+      delete normalized.repositorySnapshots[repositoryId];
+    }
   }
-  for (const [id, ts] of Object.entries(state.seenArticles || {})) {
-    if (ts < cutoff) delete state.seenArticles[id];
-  }
-  await writeFile(STATE_PATH, JSON.stringify(state, null, 2));
+
+  // Write atomically so an interrupted job cannot leave partial JSON behind.
+  await writeJSONAtomic(STATE_PATH, normalized);
 }
 
 // -- Load Sources ------------------------------------------------------------
@@ -77,6 +163,641 @@ async function saveState(state) {
 async function loadSources() {
   const sourcesPath = join(SCRIPT_DIR, "..", "config", "default-sources.json");
   return JSON.parse(await readFile(sourcesPath, "utf-8"));
+}
+
+// -- GitHub Repository Discovery --------------------------------------------
+
+function clampInteger(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function quoteGitHubSearchTerm(value) {
+  const term = String(value || "")
+    .replace(/"/g, "")
+    .trim();
+  if (!term) return null;
+  return term.includes(" ") ? `"${term}"` : term;
+}
+
+function buildGitHubSearchQueries(githubConfig, now = new Date()) {
+  const lookbackDays = clampInteger(
+    githubConfig?.lookbackDays,
+    GITHUB_DEFAULT_LOOKBACK_DAYS,
+    1,
+    30,
+  );
+  const cutoff = new Date(
+    now.getTime() - lookbackDays * 24 * 60 * 60 * 1000,
+  )
+    .toISOString()
+    .slice(0, 10);
+  const groups = Array.isArray(githubConfig?.discoveryGroups)
+    ? githubConfig.discoveryGroups.filter((group) => group?.enabled !== false)
+    : [];
+  const dayNumber = Math.floor(now.getTime() / (24 * 60 * 60 * 1000));
+  const queries = [];
+
+  for (const group of groups) {
+    if (!group?.id) continue;
+
+    const keywordTerms = (Array.isArray(group.keywords) ? group.keywords : [])
+      .map(quoteGitHubSearchTerm)
+      .filter(Boolean);
+    const topicTerms = (Array.isArray(group.topics) ? group.topics : [])
+      .map((topic) => String(topic || "").trim())
+      .filter(Boolean);
+    const selectedKeyword =
+      keywordTerms.length > 0
+        ? keywordTerms[dayNumber % keywordTerms.length]
+        : null;
+    const selectedTopic =
+      topicTerms.length > 0 ? topicTerms[dayNumber % topicTerms.length] : null;
+    if (!selectedKeyword && !selectedTopic) continue;
+
+    // GitHub's repository search can return empty results when free-text terms
+    // and topic qualifiers are combined with OR. Rotate one keyword and one
+    // topic per day instead. The seven-day lookback covers every configured
+    // term while keeping the request count safely below the search rate limit.
+    const commonFilters = "archived:false mirror:false template:false is:public";
+
+    queries.push({
+      groupId: group.id,
+      groupLabel: group.label || group.id,
+      mode: "new",
+      q: selectedTopic
+        ? `topic:${selectedTopic} created:>=${cutoff} ${commonFilters}`
+        : `${selectedKeyword} in:name,description,topics created:>=${cutoff} ${commonFilters}`,
+      sort: "stars",
+      order: "desc",
+    });
+    queries.push({
+      groupId: group.id,
+      groupLabel: group.label || group.id,
+      mode: "active",
+      q: selectedKeyword
+        ? `${selectedKeyword} in:name,description,topics pushed:>=${cutoff} ${commonFilters}`
+        : `topic:${selectedTopic} pushed:>=${cutoff} ${commonFilters}`,
+      sort: "updated",
+      order: "desc",
+    });
+  }
+
+  return queries;
+}
+
+function buildGitHubHeaders(
+  token,
+  accept = "application/vnd.github+json",
+) {
+  const headers = {
+    Accept: accept,
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+    "User-Agent": "follow-builders",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+async function githubFetch(url, token, accept) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= GITHUB_RETRY_ATTEMPTS; attempt++) {
+    let response;
+    try {
+      response = await fetch(url, {
+        headers: buildGitHubHeaders(token, accept),
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (err) {
+      lastError = err;
+      if (attempt < GITHUB_RETRY_ATTEMPTS) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      throw err;
+    }
+
+    if (response.ok) return response;
+
+    const message = await response.text().catch(() => "");
+    const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
+    const rateLimitReset = response.headers.get("x-ratelimit-reset");
+    const retryAfter = response.headers.get("retry-after");
+
+    if (response.status === 403 || response.status === 429) {
+      const details = retryAfter
+        ? `retry after ${retryAfter}s`
+        : rateLimitRemaining === "0" && rateLimitReset
+          ? `reset at ${new Date(Number(rateLimitReset) * 1000).toISOString()}`
+          : "request was rate limited";
+      throw new Error(`GitHub API rate limit: ${details}`);
+    }
+
+    lastError = new Error(
+      `GitHub API HTTP ${response.status}: ${message.slice(0, 300)}`,
+    );
+    lastError.status = response.status;
+    if (
+      !GITHUB_RETRY_STATUSES.has(response.status) ||
+      attempt === GITHUB_RETRY_ATTEMPTS
+    ) {
+      throw lastError;
+    }
+    await sleep(1000 * attempt);
+  }
+
+  throw lastError || new Error("GitHub API request failed");
+}
+
+async function githubFetchJSON(url, token) {
+  const response = await githubFetch(url, token);
+  return response.json();
+}
+
+async function githubFetchText(url, token, accept) {
+  const response = await githubFetch(url, token, accept);
+  return response.text();
+}
+
+function normalizeGitHubRepository(repository, groupId, mode) {
+  return {
+    source: "github",
+    id: repository.id,
+    fullName: repository.full_name,
+    name: repository.name,
+    owner: repository.owner?.login || "",
+    description: repository.description?.trim() || "",
+    url: repository.html_url,
+    homepage: repository.homepage || null,
+    stars: repository.stargazers_count || 0,
+    forks: repository.forks_count || 0,
+    openIssues: repository.open_issues_count || 0,
+    language: repository.language || null,
+    topics: Array.isArray(repository.topics) ? repository.topics : [],
+    license: repository.license?.spdx_id || null,
+    createdAt: repository.created_at,
+    updatedAt: repository.updated_at,
+    pushedAt: repository.pushed_at,
+    matchedGroups: [groupId],
+    discoveryModes: [mode],
+  };
+}
+
+function shouldIncludeGitHubRepository(
+  repository,
+  ignoredRepositories,
+  ignoredOwners,
+) {
+  if (!repository?.id || !repository.full_name || !repository.html_url) {
+    return false;
+  }
+  if (
+    repository.private ||
+    repository.fork ||
+    repository.archived ||
+    repository.disabled ||
+    repository.is_template ||
+    repository.mirror_url
+  ) {
+    return false;
+  }
+  if (!repository.description?.trim()) return false;
+  if (ignoredRepositories.has(repository.full_name.toLowerCase())) return false;
+  if (ignoredOwners.has(repository.owner?.login?.toLowerCase())) return false;
+  return true;
+}
+
+function updateRepositorySnapshot(state, repository, capturedAt = new Date()) {
+  const repositoryId = String(repository.id);
+  const capturedAtIso = capturedAt.toISOString();
+  const capturedDate = capturedAtIso.slice(0, 10);
+  const existing = state.repositorySnapshots[repositoryId] || {
+    fullName: repository.fullName,
+    firstSeenAt: capturedAtIso,
+    lastSeenAt: capturedAtIso,
+    snapshots: [],
+  };
+  const snapshots = Array.isArray(existing.snapshots) ? existing.snapshots : [];
+  const withoutToday = snapshots.filter(
+    (snapshot) => String(snapshot?.capturedAt || "").slice(0, 10) !== capturedDate,
+  );
+
+  state.repositorySnapshots[repositoryId] = {
+    ...existing,
+    fullName: repository.fullName,
+    lastSeenAt: capturedAtIso,
+    snapshots: [
+      ...withoutToday,
+      {
+        capturedAt: capturedAtIso,
+        stars: repository.stars,
+        forks: repository.forks,
+        openIssues: repository.openIssues,
+      },
+    ],
+  };
+}
+
+async function fetchGitHubCandidates(githubConfig, token, state, errors) {
+  const queries = buildGitHubSearchQueries(githubConfig);
+  const ignoredRepositories = new Set(
+    (githubConfig?.ignoredRepositories || []).map((name) =>
+      String(name).toLowerCase(),
+    ),
+  );
+  const ignoredOwners = new Set(
+    (githubConfig?.ignoredOwners || []).map((name) =>
+      String(name).toLowerCase(),
+    ),
+  );
+  const candidatesById = new Map();
+  let successfulSearches = 0;
+
+  for (const query of queries) {
+    const params = new URLSearchParams({
+      q: query.q,
+      sort: query.sort,
+      order: query.order,
+      per_page: String(GITHUB_SEARCH_RESULTS_PER_QUERY),
+    });
+
+    try {
+      const data = await githubFetchJSON(
+        `${GITHUB_API_BASE}/search/repositories?${params}`,
+        token,
+      );
+      successfulSearches++;
+
+      if (data.incomplete_results) {
+        errors.push(
+          `GitHub: Incomplete results for ${query.groupId}/${query.mode}`,
+        );
+      }
+
+      for (const repository of data.items || []) {
+        if (
+          !shouldIncludeGitHubRepository(
+            repository,
+            ignoredRepositories,
+            ignoredOwners,
+          )
+        ) {
+          continue;
+        }
+
+        const candidate = normalizeGitHubRepository(
+          repository,
+          query.groupId,
+          query.mode,
+        );
+        const existing = candidatesById.get(String(candidate.id));
+
+        if (existing) {
+          existing.matchedGroups = [
+            ...new Set([...existing.matchedGroups, query.groupId]),
+          ];
+          existing.discoveryModes = [
+            ...new Set([...existing.discoveryModes, query.mode]),
+          ];
+        } else {
+          candidatesById.set(String(candidate.id), candidate);
+        }
+      }
+    } catch (err) {
+      errors.push(`GitHub: ${query.groupId}/${query.mode}: ${err.message}`);
+    }
+  }
+
+  if (queries.length > 0 && successfulSearches === 0) {
+    throw new Error("GitHub discovery failed: all repository searches failed");
+  }
+
+  const candidates = [...candidatesById.values()];
+  for (const candidate of candidates) {
+    updateRepositorySnapshot(state, candidate);
+  }
+  return { candidates, queries, successfulSearches };
+}
+
+function daysSince(value, now) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return 3650;
+  return Math.max(0, (now.getTime() - timestamp) / (24 * 60 * 60 * 1000));
+}
+
+function calculatePreliminaryScore(repository, state, now = new Date()) {
+  const repositoryAgeDays = daysSince(repository.createdAt, now);
+  const lastPushDays = daysSince(repository.pushedAt, now);
+  const snapshots =
+    state.repositorySnapshots[String(repository.id)]?.snapshots || [];
+  const orderedSnapshots = [...snapshots].sort(
+    (a, b) => new Date(a.capturedAt) - new Date(b.capturedAt),
+  );
+  const baselineStars = orderedSnapshots[0]?.stars ?? repository.stars;
+  const starGrowth = Math.max(0, repository.stars - baselineStars);
+
+  let score = 0;
+  score += Math.min(20, Math.log2(repository.stars + 1) * 2);
+  score += Math.min(8, Math.log2(repository.forks + 1));
+  score += Math.max(0, 14 - repositoryAgeDays);
+  score += Math.max(0, 7 - lastPushDays);
+  score += Math.min(30, Math.log2(starGrowth + 1) * 5);
+  score += repository.homepage ? 2 : 0;
+  score += repository.license ? 2 : 0;
+  score += Math.min(3, repository.topics.length);
+  score += Math.min(4, repository.matchedGroups.length * 2);
+  score += repository.discoveryModes.includes("new") ? 3 : 0;
+
+  return {
+    score: Number(score.toFixed(2)),
+    signals: {
+      repositoryAgeDays: Number(repositoryAgeDays.toFixed(1)),
+      lastPushDays: Number(lastPushDays.toFixed(1)),
+      starGrowth,
+    },
+  };
+}
+
+function selectCandidatesForEnrichment(
+  candidates,
+  githubConfig,
+  state,
+  now = new Date(),
+) {
+  const allowPreviouslyFeatured =
+    githubConfig?.allowPreviouslyFeatured === true;
+  const scored = candidates
+    .filter(
+      (repository) =>
+        allowPreviouslyFeatured ||
+        !state.featuredRepositories[String(repository.id)],
+    )
+    .map((repository) => {
+      const preliminary = calculatePreliminaryScore(repository, state, now);
+      return {
+        ...repository,
+        preliminaryScore: preliminary.score,
+        scoreSignals: preliminary.signals,
+      };
+    })
+    .sort((a, b) => b.preliminaryScore - a.preliminaryScore);
+  const groupIds = (githubConfig?.discoveryGroups || [])
+    .filter((group) => group?.enabled !== false && group?.id)
+    .map((group) => group.id);
+  const selectedById = new Map();
+
+  for (const groupId of groupIds) {
+    let selectedForGroup = 0;
+    for (const repository of scored) {
+      if (!repository.matchedGroups.includes(groupId)) continue;
+      if (selectedById.has(String(repository.id))) continue;
+
+      selectedById.set(String(repository.id), repository);
+      selectedForGroup++;
+      if (selectedForGroup >= GITHUB_ENRICHMENT_LIMIT_PER_GROUP) break;
+      if (selectedById.size >= GITHUB_ENRICHMENT_LIMIT) break;
+    }
+    if (selectedById.size >= GITHUB_ENRICHMENT_LIMIT) break;
+  }
+
+  for (const repository of scored) {
+    if (selectedById.size >= GITHUB_ENRICHMENT_LIMIT) break;
+    if (!selectedById.has(String(repository.id))) {
+      selectedById.set(String(repository.id), repository);
+    }
+  }
+
+  return [...selectedById.values()].sort(
+    (a, b) => b.preliminaryScore - a.preliminaryScore,
+  );
+}
+
+function cleanGitHubReadme(readme) {
+  const raw = String(readme || "").replace(/\r\n?/g, "\n");
+  const withoutUnsafeHtml = raw
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const cleaned = withoutUnsafeHtml
+    .split("\n")
+    .filter((line) => !/(?:shields\.io|badge\.svg|img\.shields)/i.test(line))
+    .join("\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const truncated = cleaned.slice(0, GITHUB_README_MAX_CHARACTERS);
+  const meaningfulCharacters = truncated.replace(/[\s#*_`~>\-]/g, "").length;
+
+  return {
+    content: truncated,
+    rawCharacters: raw.length,
+    cleanCharacters: truncated.length,
+    meaningfulCharacters,
+    truncated: cleaned.length > GITHUB_README_MAX_CHARACTERS,
+    accepted: meaningfulCharacters >= GITHUB_README_MIN_CHARACTERS,
+  };
+}
+
+async function fetchGitHubReadme(fullName, token) {
+  const parts = String(fullName || "").split("/");
+  if (
+    parts.length !== 2 ||
+    !parts.every((part) => /^[A-Za-z0-9_.-]+$/.test(part))
+  ) {
+    throw new Error(`Invalid GitHub repository name: ${fullName}`);
+  }
+
+  const [owner, repository] = parts.map(encodeURIComponent);
+  try {
+    return await githubFetchText(
+      `${GITHUB_API_BASE}/repos/${owner}/${repository}/readme`,
+      token,
+      "application/vnd.github.raw+json",
+    );
+  } catch (err) {
+    if (err.status === 404) return null;
+    throw err;
+  }
+}
+
+async function enrichGitHubCandidates(candidates, token, errors) {
+  const enriched = [];
+
+  for (const repository of candidates) {
+    try {
+      const readme = await fetchGitHubReadme(repository.fullName, token);
+      if (readme === null) continue;
+
+      const cleaned = cleanGitHubReadme(readme);
+      if (!cleaned.accepted) continue;
+
+      enriched.push({
+        ...repository,
+        readme: cleaned.content,
+        readmeCharacters: cleaned.cleanCharacters,
+        readmeTruncated: cleaned.truncated,
+        readmeIsUntrustedContent: true,
+      });
+    } catch (err) {
+      errors.push(`GitHub README: ${repository.fullName}: ${err.message}`);
+      if (String(err.message).startsWith("GitHub API rate limit:")) break;
+    }
+  }
+
+  return enriched;
+}
+
+function calculateReadmeQuality(readme) {
+  const content = String(readme || "");
+  const signals = {
+    hasInstallation: /\b(install|installation|setup|getting started|quickstart)\b|安装|开始使用/i.test(
+      content,
+    ),
+    hasUsage: /\b(usage|example|examples|how to use)\b|使用方法|示例/i.test(
+      content,
+    ),
+    hasDemo: /\b(demo|playground|live preview|try it)\b|在线体验|演示/i.test(
+      content,
+    ),
+    hasDocumentation: /\b(documentation|docs|reference)\b|文档/i.test(content),
+    hasCodeExamples: /```[\s\S]*?```/.test(content),
+  };
+  let score = Math.min(5, content.length / 2000);
+  score += signals.hasInstallation ? 4 : 0;
+  score += signals.hasUsage ? 4 : 0;
+  score += signals.hasDemo ? 3 : 0;
+  score += signals.hasDocumentation ? 2 : 0;
+  score += signals.hasCodeExamples ? 2 : 0;
+
+  return { score: Number(score.toFixed(2)), signals };
+}
+
+function selectRepositoriesForFeed(enriched, githubConfig) {
+  const scored = enriched
+    .map((repository) => {
+      const readmeQuality = calculateReadmeQuality(repository.readme);
+      return {
+        ...repository,
+        readmeQualityScore: readmeQuality.score,
+        readmeSignals: readmeQuality.signals,
+        finalScore: Number(
+          (repository.preliminaryScore + readmeQuality.score).toFixed(2),
+        ),
+      };
+    })
+    .sort((a, b) => b.finalScore - a.finalScore);
+  const groupIds = (githubConfig?.discoveryGroups || [])
+    .filter((group) => group?.enabled !== false && group?.id)
+    .map((group) => group.id);
+  const selectedById = new Map();
+
+  for (const groupId of groupIds) {
+    let selectedForGroup = 0;
+    for (const repository of scored) {
+      if (!repository.matchedGroups.includes(groupId)) continue;
+      if (selectedById.has(String(repository.id))) continue;
+
+      selectedById.set(String(repository.id), repository);
+      selectedForGroup++;
+      if (selectedForGroup >= GITHUB_FEED_LIMIT_PER_GROUP) break;
+      if (selectedById.size >= GITHUB_FEED_LIMIT) break;
+    }
+    if (selectedById.size >= GITHUB_FEED_LIMIT) break;
+  }
+
+  for (const repository of scored) {
+    if (selectedById.size >= GITHUB_FEED_LIMIT) break;
+    if (!selectedById.has(String(repository.id))) {
+      selectedById.set(String(repository.id), repository);
+    }
+  }
+
+  return [...selectedById.values()].sort((a, b) => b.finalScore - a.finalScore);
+}
+
+function createGitHubFeedDocument({
+  repositories,
+  queryCount,
+  successfulSearches,
+  discoveredCandidates,
+  selectedForReadme,
+  acceptedReadmes,
+  lookbackDays,
+  errors,
+  generatedAt = new Date(),
+}) {
+  return {
+    schemaVersion: 1,
+    generatedAt: generatedAt.toISOString(),
+    lookbackDays,
+    repositories: repositories.map(({ readme, ...repository }) => ({
+      ...repository,
+      readmeExcerpt: readme,
+    })),
+    stats: {
+      queryCount,
+      successfulSearches,
+      discoveredCandidates,
+      selectedForReadme,
+      acceptedReadmes,
+      publishedRepositories: repositories.length,
+    },
+    errors: errors.length > 0 ? errors : undefined,
+  };
+}
+
+function markFeaturedRepositories(state, repositories, featuredAt = new Date()) {
+  const timestamp = featuredAt.toISOString();
+  for (const repository of repositories) {
+    state.featuredRepositories[String(repository.id)] = {
+      fullName: repository.fullName,
+      featuredAt: timestamp,
+    };
+  }
+}
+
+async function buildGitHubFeed(githubConfig, token, state, errors) {
+  const discovery = await fetchGitHubCandidates(
+    githubConfig,
+    token,
+    state,
+    errors,
+  );
+  const selectedForReadme = selectCandidatesForEnrichment(
+    discovery.candidates,
+    githubConfig,
+    state,
+  );
+  const enriched = await enrichGitHubCandidates(
+    selectedForReadme,
+    token,
+    errors,
+  );
+  const repositories = selectRepositoriesForFeed(enriched, githubConfig);
+  const lookbackDays = clampInteger(
+    githubConfig?.lookbackDays,
+    GITHUB_DEFAULT_LOOKBACK_DAYS,
+    1,
+    30,
+  );
+  const feed = createGitHubFeedDocument({
+    repositories,
+    queryCount: discovery.queries.length,
+    successfulSearches: discovery.successfulSearches,
+    discoveredCandidates: discovery.candidates.length,
+    selectedForReadme: selectedForReadme.length,
+    acceptedReadmes: enriched.length,
+    lookbackDays,
+    errors,
+  });
+
+  return { feed, repositories };
 }
 
 // -- Podcast Fetching (RSS + pod2txt) ----------------------------------------
@@ -1004,6 +1725,290 @@ async function fetchBlogContent(blogs, state, errors) {
 
 async function main() {
   const args = process.argv.slice(2);
+
+  // Validate state handling without fetching or overwriting any feed.
+  // FOLLOW_BUILDERS_STATE_PATH can point this command at a temporary file.
+  if (args.includes("--validate-state")) {
+    const state = await loadState();
+    await saveState(state);
+    console.log(
+      JSON.stringify({
+        status: "ok",
+        version: state.version,
+        repositorySnapshots: Object.keys(state.repositorySnapshots).length,
+        featuredRepositories: Object.keys(state.featuredRepositories).length,
+      }),
+    );
+    return;
+  }
+
+  if (args.includes("--print-github-queries")) {
+    const sources = await loadSources();
+    const queries = buildGitHubSearchQueries(sources.github);
+    console.log(JSON.stringify({ count: queries.length, queries }, null, 2));
+    return;
+  }
+
+  if (args.includes("--validate-github-enrichment")) {
+    const sources = await loadSources();
+    const state = createEmptyState();
+    const now = new Date();
+    const candidates = sources.github.discoveryGroups.flatMap((group, groupIndex) =>
+      Array.from({ length: 10 }, (_, itemIndex) => ({
+        source: "github",
+        id: groupIndex * 100 + itemIndex + 1,
+        fullName: `example-${groupIndex}/project-${itemIndex}`,
+        name: `project-${itemIndex}`,
+        owner: `example-${groupIndex}`,
+        description: "A project with a meaningful description",
+        url: `https://github.com/example-${groupIndex}/project-${itemIndex}`,
+        homepage: itemIndex % 2 === 0 ? "https://example.com" : null,
+        stars: 100 - itemIndex,
+        forks: 10,
+        openIssues: 2,
+        language: "TypeScript",
+        topics: [group.id],
+        license: "MIT",
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        pushedAt: now.toISOString(),
+        matchedGroups: [group.id],
+        discoveryModes: ["new"],
+      })),
+    );
+    for (const candidate of candidates) {
+      updateRepositorySnapshot(state, candidate, now);
+    }
+    const selected = selectCandidatesForEnrichment(
+      candidates,
+      sources.github,
+      state,
+      now,
+    );
+    const longReadme = cleanGitHubReadme(
+      `![badge](https://img.shields.io/test)\n<h1>Product</h1>\n${"Useful content ".repeat(1200)}`,
+    );
+    const shortReadme = cleanGitHubReadme("# Demo\nShort text");
+    const enriched = selected.map((candidate, index) => ({
+      ...candidate,
+      readme: [
+        "# Product",
+        "## Installation",
+        "Run `npm install` to install the project.",
+        "## Usage",
+        "```js",
+        `console.log(\"example-${index}\");`,
+        "```",
+        "See the documentation and live demo for more examples.",
+        "Useful product details. ".repeat(30),
+      ].join("\n"),
+      readmeCharacters: 1000,
+      readmeTruncated: false,
+      readmeIsUntrustedContent: true,
+    }));
+    const published = selectRepositoriesForFeed(enriched, sources.github);
+    const feed = createGitHubFeedDocument({
+      repositories: published,
+      queryCount: 10,
+      successfulSearches: 10,
+      discoveredCandidates: candidates.length,
+      selectedForReadme: selected.length,
+      acceptedReadmes: enriched.length,
+      lookbackDays: GITHUB_DEFAULT_LOOKBACK_DAYS,
+      errors: [],
+      generatedAt: now,
+    });
+    markFeaturedRepositories(state, published, now);
+    const groupCounts = Object.fromEntries(
+      sources.github.discoveryGroups.map((group) => [
+        group.id,
+        selected.filter((candidate) =>
+          candidate.matchedGroups.includes(group.id),
+        ).length,
+      ]),
+    );
+    const publishedGroupCounts = Object.fromEntries(
+      sources.github.discoveryGroups.map((group) => [
+        group.id,
+        published.filter((repository) =>
+          repository.matchedGroups.includes(group.id),
+        ).length,
+      ]),
+    );
+    const checks = {
+      selectedForty: selected.length === GITHUB_ENRICHMENT_LIMIT,
+      balancedGroups: Object.values(groupCounts).every(
+        (count) => count === GITHUB_ENRICHMENT_LIMIT_PER_GROUP,
+      ),
+      uniqueRepositories:
+        new Set(selected.map((candidate) => candidate.id)).size ===
+        selected.length,
+      longReadmeAcceptedAndTruncated:
+        longReadme.accepted && longReadme.truncated,
+      shortReadmeRejected: !shortReadme.accepted,
+      badgeRemoved: !longReadme.content.includes("shields.io"),
+      publishedTwenty: published.length === GITHUB_FEED_LIMIT,
+      balancedPublishedGroups: Object.values(publishedGroupCounts).every(
+        (count) => count === GITHUB_FEED_LIMIT_PER_GROUP,
+      ),
+      feedSchemaValid:
+        feed.schemaVersion === 1 &&
+        feed.stats.publishedRepositories === GITHUB_FEED_LIMIT &&
+        feed.repositories.every(
+          (repository) =>
+            typeof repository.readmeExcerpt === "string" &&
+            !("readme" in repository),
+        ),
+      featuredHistoryUpdated:
+        Object.keys(state.featuredRepositories).length === GITHUB_FEED_LIMIT,
+    };
+    if (Object.values(checks).some((passed) => !passed)) {
+      throw new Error(`GitHub enrichment validation failed: ${JSON.stringify(checks)}`);
+    }
+    console.log(
+      JSON.stringify(
+        { status: "ok", checks, groupCounts, publishedGroupCounts },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const githubReadmeIndex = args.indexOf("--github-readme");
+  if (githubReadmeIndex !== -1) {
+    const fullName = args[githubReadmeIndex + 1];
+    if (!fullName) {
+      throw new Error("--github-readme requires owner/repository");
+    }
+    const githubToken = process.env.GITHUB_TOKEN;
+    const readme = await fetchGitHubReadme(fullName, githubToken);
+    if (readme === null) {
+      console.log(JSON.stringify({ fullName, found: false }, null, 2));
+      return;
+    }
+    const cleaned = cleanGitHubReadme(readme);
+    console.log(
+      JSON.stringify(
+        {
+          fullName,
+          found: true,
+          rawCharacters: cleaned.rawCharacters,
+          cleanCharacters: cleaned.cleanCharacters,
+          meaningfulCharacters: cleaned.meaningfulCharacters,
+          truncated: cleaned.truncated,
+          accepted: cleaned.accepted,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (args.includes("--github-candidates-only")) {
+    const sources = await loadSources();
+    const state = await loadState();
+    const errors = [];
+    const githubToken = process.env.GITHUB_TOKEN;
+
+    if (!githubToken) {
+      console.error(
+        "GITHUB_TOKEN is not set; using the lower unauthenticated API limits",
+      );
+    }
+
+    const result = await fetchGitHubCandidates(
+      sources.github,
+      githubToken,
+      state,
+      errors,
+    );
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          queryCount: result.queries.length,
+          successfulSearches: result.successfulSearches,
+          candidateCount: result.candidates.length,
+          candidates: result.candidates.map((repository) => ({
+            id: repository.id,
+            fullName: repository.fullName,
+            stars: repository.stars,
+            matchedGroups: repository.matchedGroups,
+            discoveryModes: repository.discoveryModes,
+          })),
+          errors: errors.length > 0 ? errors : undefined,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const githubFeedDryRun = args.includes("--github-feed-dry-run");
+  const githubOnly = args.includes("--github-only");
+  if (githubFeedDryRun || githubOnly) {
+    const githubToken = process.env.GITHUB_TOKEN;
+    if (!githubToken) {
+      throw new Error(
+        "GITHUB_TOKEN is required for reliable GitHub feed generation",
+      );
+    }
+
+    const sources = await loadSources();
+    const state = await loadState();
+    const errors = [];
+    const { feed, repositories } = await buildGitHubFeed(
+      sources.github,
+      githubToken,
+      state,
+      errors,
+    );
+
+    if (githubFeedDryRun) {
+      console.log(
+        JSON.stringify(
+          {
+            status: "preview",
+            stats: feed.stats,
+            repositories: repositories.map((repository) => ({
+              fullName: repository.fullName,
+              finalScore: repository.finalScore,
+              matchedGroups: repository.matchedGroups,
+            })),
+            errors: feed.errors,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    // Publish the feed first. Only a successfully published repository is
+    // recorded as featured, so a failed feed write cannot create false dedupe.
+    await writeJSONAtomic(GITHUB_FEED_PATH, feed);
+    const completedAt = new Date();
+    markFeaturedRepositories(state, repositories, completedAt);
+    state.lastSuccessfulRun = completedAt.toISOString();
+    await saveState(state);
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          feedPath: GITHUB_FEED_PATH,
+          publishedRepositories: repositories.length,
+          errors: feed.errors,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   const tweetsOnly = args.includes("--tweets-only");
   const podcastsOnly = args.includes("--podcasts-only");
   const blogsOnly = args.includes("--blogs-only");
@@ -1124,7 +2129,8 @@ async function main() {
     console.error(`  feed-blogs.json: ${blogContent.length} posts`);
   }
 
-  // Save dedup state
+  // Save dedup state only after all requested feed work has completed.
+  state.lastSuccessfulRun = new Date().toISOString();
   await saveState(state);
 
   if (errors.length > 0) {
