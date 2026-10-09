@@ -79,19 +79,19 @@ AI 会把仓库元数据和 README 摘要视为不可信外部数据，不执行
 ### OpenClaw
 
 ```bash
-git clone https://github.com/jyx0919/git.git ~/skills/follow-builders
+git clone https://github.com/jyx0919/github-product-ideas.git ~/skills/github-product-ideas
 ```
 
 ### Claude Code 或其他兼容 Skill 的 Agent
 
 ```bash
-git clone https://github.com/jyx0919/git.git ~/.claude/skills/follow-builders
+git clone https://github.com/jyx0919/github-product-ideas.git ~/.claude/skills/github-product-ideas
 ```
 
 在 Agent 的运行环境中配置中央内容地址：
 
 ```bash
-export FOLLOW_BUILDERS_CONTENT_BASE_URL="https://raw.githubusercontent.com/jyx0919/git/main"
+export FOLLOW_BUILDERS_CONTENT_BASE_URL="https://raw.githubusercontent.com/jyx0919/github-product-ideas/main"
 ```
 
 然后让 Agent 配置 `follow-builders` Skill，或者直接请求一份 GitHub 产品 Ideas 周报。
@@ -240,5 +240,5 @@ API Token。
 
 ## 项目仓库
 
-- 源代码：[github.com/jyx0919/git](https://github.com/jyx0919/git)
-- 中央内容地址：`https://raw.githubusercontent.com/jyx0919/git/main`
+- 源代码：[github.com/jyx0919/github-product-ideas](https://github.com/jyx0919/github-product-ideas)
+- 中央内容地址：`https://raw.githubusercontent.com/jyx0919/github-product-ideas/main`

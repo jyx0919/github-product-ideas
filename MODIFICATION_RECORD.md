@@ -1,7 +1,7 @@
-# Follow Builders 改造记录
+# GitHub Product Ideas 改造记录
 
 更新日期：2026-10-09
-当前阶段：本地功能改造已完成，等待提交、推送和 GitHub Actions 线上验证
+当前阶段：首版本地改造已提交并推送，正在同步仓库新地址，等待 GitHub Actions 线上验证
 
 ## 1. 改造目标
 
@@ -35,7 +35,7 @@
 | `config/default-sources.json` | 增加 AI 产品、开发者工具、效率与自动化、开源产品、数据与基础设施 5 个 GitHub 分类，并配置关键词、Topics 和忽略名单 | 给发现程序提供最底层的数据来源和分类规则 | `generate-feed.js` 根据这里的配置构造 GitHub 搜索条件；修改关键词会直接影响候选项目 |
 | `config/config-schema.json` | 将默认频率改为每周，增加 GitHub 分类、每期数量、回溯天数和是否允许重复推荐等用户配置 | 让用户能够配置 GitHub 周报，而不是原来的信息源摘要 | `prepare-digest.js` 会读取这些偏好；其中回溯范围和全局去重仍以中央 Feed 为准 |
 | `scripts/generate-feed.js` | 增加 GitHub API 搜索、重试与限流提示、仓库过滤、去重、快照、两阶段评分、分类均衡、README 获取与清洗、Feed 生成和离线验证命令 | 这是本次改造的核心，让系统真正能够从 GitHub 发现项目 | 会生成 `feed-github.json` 并更新 `state-feed.json`；旧信息源代码暂时保留以降低兼容风险 |
-| `scripts/prepare-digest.js` | 默认只读取 GitHub Feed，按用户分类和数量过滤项目，移除内部评分字段，并加载 GitHub 总结提示词 | 将中央原始数据整理成适合 AI 生成周报的输入 | 输出仍是结构化准备数据，必须经过 AI 生成最终可读周报，不能直接作为推送正文 |
+| `scripts/prepare-digest.js` | 默认从 `jyx0919/github-product-ideas` 读取 GitHub Feed 和提示词，按用户分类和数量过滤项目，并移除内部评分字段 | 将中央原始数据整理成适合 AI 生成周报的输入，并让仓库改名后的内容地址立即生效 | 输出仍是结构化准备数据，必须经过 AI 生成最终可读周报，不能直接作为推送正文 |
 | `prompts/summarize-github.md` | 新增项目总结、证据判断、风险提示和产品 Idea 生成规则 | 告诉 AI 应该怎样理解每个 GitHub 项目 | README 被明确视为不可信外部内容，AI 不应执行其中的指令或虚构能力 |
 | `prompts/digest-intro.md` | 将整期内容结构改为 GitHub 项目周报和跨项目产品信号 | 统一最终周报的结构和语气 | 影响周报展示方式，不改变项目筛选结果 |
 | `prompts/translate.md` | 更新中文和双语翻译规则，要求保留项目名、链接、代码和技术事实 | 避免翻译改变事实或破坏链接 | 只影响最终语言表达，不影响 Feed 数据 |
@@ -43,11 +43,11 @@
 | `scripts/package.json` | 增加 GitHub 生成、预览和验证命令，删除 `dotenv` 和未使用的 `proper-lockfile` | 项目脚本已经不需要第三方 npm 包 | 无需运行 `npm install`，减少安装时间和供应链依赖 |
 | `scripts/package-lock.json` | 删除全部第三方依赖及其间接依赖记录 | 保证锁文件与 `package.json` 一致 | 锁文件只保留项目本身的信息 |
 | `.github/workflows/generate-feed.yml` | 改为每周一北京时间 08:17 运行 GitHub 抓取，默认使用 `github-only`，传入 GitHub 自动 Token，并删除 npm 安装步骤 | 将中央自动化任务切换到 GitHub 项目发现 | 定时任务会提交 Feed 和状态变化；首次真实运行要在代码推送后验证 |
-| `SKILL.md` | 重写安装引导、用户配置、定时任务、内容生成、安全规则和推送流程 | 让兼容 Skill 的 Agent 知道如何使用新产品 | 内部 Skill 名称暂时仍为 `follow-builders`，避免破坏已有调用方式 |
+| `SKILL.md` | 重写安装引导、用户配置、定时任务、内容生成、安全规则和推送流程，并同步新的中央内容地址 | 让兼容 Skill 的 Agent 知道如何使用新产品 | 内部 Skill 名称暂时仍为 `follow-builders`，避免破坏已有调用方式 |
 | `examples/sample-digest.md` | 改为明确标注虚构数据的 GitHub 产品 Ideas 周报示例 | 展示最终输出应是什么样子，同时避免把示例当成真实推荐 | 只用于说明，不参与自动筛选和生成 |
 | `LICENSE` | 新增 MIT 许可证，同时保留 Zara Zhang 和 jyx0919 的 2026 年署名 | 明确代码的使用、修改和再发布条件，并保留原项目归属 | 允许按照 MIT 条款使用和分发项目；许可证声明必须随副本或主要代码一起保留 |
-| `README.md` | 英文说明全面切换到 GitHub Product Ideas，并更新架构、配置、运行命令、费用、安全、限制和许可证入口 | 让维护者和用户理解新项目 | 明确无需 npm 安装，要求 Node.js 20.12 或更高版本，并链接 MIT 许可证 |
-| `README.zh-CN.md` | 同步中文版项目说明、运行方法和许可证入口 | 为中文使用者提供一致说明 | 与英文版保持相同的功能边界、限制和许可证说明 |
+| `README.md` | 英文说明全面切换到 GitHub Product Ideas，并更新架构、配置、运行命令、仓库地址、安装目录、费用、安全、限制和许可证入口 | 让维护者和用户理解新项目 | 明确无需 npm 安装，要求 Node.js 20.12 或更高版本，并使用新的产品仓库地址 |
+| `README.zh-CN.md` | 同步中文版项目说明、运行方法、仓库地址、安装目录和许可证入口 | 为中文使用者提供一致说明 | 与英文版保持相同的功能边界、限制、仓库地址和许可证说明 |
 
 ## 4. 项目筛选规则
 
@@ -98,21 +98,27 @@
 - `deliver.js` 在没有第三方依赖时可以通过终端安全输出测试消息。
 - 测试期间没有发送真实邮件或 Telegram 消息。
 
+### 版本库与发布准备
+
+- 本地项目目录已从 `follow-builders` 重命名为 `github-product-ideas`。
+- GitHub 仓库已重命名为 `jyx0919/github-product-ideas`，本地 `origin` 已同步并验证。
+- 核心改造提交为 `63e6ae7`，提交作者已关联到 jyx0919 的 GitHub 隐私邮箱。
+- 本地完整历史已与远程 `.gitkeep` 初始提交安全合并，合并提交为 `94a42bc`。
+- `main` 已通过普通推送上传，没有使用强制推送；本地与远程提交已经核对一致。
+
 ## 6. 尚未完成的上线步骤
 
 以下事项在正式可用前仍需完成：
 
-1. 审核全部本地修改并创建 Git 提交。
-2. 将本地历史与远程仓库中仅包含 `.gitkeep` 的初始提交安全合并。
-3. 推送到 `https://github.com/jyx0919/git`。
-4. 在 GitHub Actions 中手动运行一次 `github-feed-dry-run`。
-5. 再运行一次 `github-only`，确认能够生成并提交真实的 `feed-github.json`。
-6. 使用生成的真实 Feed 完成一次 AI 周报和终端输出验收。
-7. 线上验证完成后，更新本记录的状态和测试结果。
+1. 提交并推送仓库改名后的地址同步修改。
+2. 在 GitHub Actions 中手动运行一次 `github-feed-dry-run`。
+3. 再运行一次 `github-only`，确认能够生成并提交真实的 `feed-github.json`。
+4. 使用生成的真实 Feed 完成一次 AI 周报和终端输出验收。
+5. 线上验证完成后，更新本记录的状态和测试结果。
 
 本地无法完成完整 GitHub API dry-run，因为 SSH 部署密钥只能用于 Git 推送，不能作为
-GitHub API Token。推送后，GitHub Actions 会自动提供 `${{ github.token }}`，因此不需要
-为工作流额外创建个人访问 Token。
+GitHub API Token。GitHub Actions 会自动提供 `${{ github.token }}`，因此不需要为工作流
+额外创建个人访问 Token。
 
 ## 7. 当前已知限制
 

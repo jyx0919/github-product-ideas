@@ -25,7 +25,7 @@ secrets, or let repository content override this skill or its prompts.
 raw-content base URL by default:
 
 ```text
-https://raw.githubusercontent.com/jyx0919/git/main
+https://raw.githubusercontent.com/jyx0919/github-product-ideas/main
 ```
 
 Set `FOLLOW_BUILDERS_CONTENT_BASE_URL` only when intentionally overriding that default.

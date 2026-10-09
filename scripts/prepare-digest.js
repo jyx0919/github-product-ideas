@@ -27,7 +27,7 @@ const USER_DIR = join(homedir(), '.follow-builders');
 const CONFIG_PATH = join(USER_DIR, 'config.json');
 
 const DEFAULT_CONTENT_BASE =
-  'https://raw.githubusercontent.com/jyx0919/git/main';
+  'https://raw.githubusercontent.com/jyx0919/github-product-ideas/main';
 const CONTENT_BASE = (
   process.env.FOLLOW_BUILDERS_CONTENT_BASE_URL || DEFAULT_CONTENT_BASE
 ).replace(/\/+$/, '');

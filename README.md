@@ -80,19 +80,19 @@ It must not follow instructions embedded in a repository or invent unsupported c
 ### OpenClaw
 
 ```bash
-git clone https://github.com/jyx0919/git.git ~/skills/follow-builders
+git clone https://github.com/jyx0919/github-product-ideas.git ~/skills/github-product-ideas
 ```
 
 ### Claude Code or another skill-compatible agent
 
 ```bash
-git clone https://github.com/jyx0919/git.git ~/.claude/skills/follow-builders
+git clone https://github.com/jyx0919/github-product-ideas.git ~/.claude/skills/github-product-ideas
 ```
 
 Configure the raw-content location in the environment used by the agent:
 
 ```bash
-export FOLLOW_BUILDERS_CONTENT_BASE_URL="https://raw.githubusercontent.com/jyx0919/git/main"
+export FOLLOW_BUILDERS_CONTENT_BASE_URL="https://raw.githubusercontent.com/jyx0919/github-product-ideas/main"
 ```
 
 Then ask the agent to set up the `follow-builders` skill or request a GitHub product ideas
@@ -249,5 +249,5 @@ original author attribution and includes the current repository's modification c
 
 ## Repository
 
-- Source: [github.com/jyx0919/git](https://github.com/jyx0919/git)
-- Central content base: `https://raw.githubusercontent.com/jyx0919/git/main`
+- Source: [github.com/jyx0919/github-product-ideas](https://github.com/jyx0919/github-product-ideas)
+- Central content base: `https://raw.githubusercontent.com/jyx0919/github-product-ideas/main`
