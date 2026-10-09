@@ -1,7 +1,7 @@
 # GitHub Product Ideas 改造记录
 
 更新日期：2026-10-09
-当前阶段：首版本地改造已提交并推送，正在同步仓库新地址，等待 GitHub Actions 线上验证
+当前阶段：首版改造已提交并推送，GitHub Actions 首次线上正式生成验证通过
 
 ## 1. 改造目标
 
@@ -106,15 +106,31 @@
 - 本地完整历史已与远程 `.gitkeep` 初始提交安全合并，合并提交为 `94a42bc`。
 - `main` 已通过普通推送上传，没有使用强制推送；本地与远程提交已经核对一致。
 
+### 首次线上正式运行
+
+- 2026-10-09 手动触发 GitHub Actions，运行编号为 `37924838410`，实际执行模式为
+  `github-only`。
+- 工作流的检出代码、Node.js 环境、Feed 生成、提交和推送步骤全部成功。
+- 10 组搜索全部成功，共发现 178 个候选项目，选择 40 个读取 README，其中 38 个
+  README 通过检查，最终发布 20 个项目。
+- 工作流首次生成 `feed-github.json`，并将去重及项目快照写入 `state-feed.json`。
+- 自动生成提交为 `ff7b6a5`（`chore: update feeds [skip ci]`），已经推送到 `main`，本地
+  仓库也已通过 fast-forward 安全同步。
+- 已检查 Feed 中项目数量、ID 去重、必填字段、GitHub 链接、评分排序和不可信 README
+  标记；状态文件中的 20 条推荐记录、178 条候选快照和最后成功时间均有效。
+- 本次“推送”是将结构化 Feed 发布到 GitHub 仓库，尚未发送邮件或 Telegram 消息。
+
 ## 6. 尚未完成的上线步骤
 
-以下事项在正式可用前仍需完成：
+中央 Feed 抓取与发布链路已经可以运行。面向用户的完整周报仍需完成：
 
-1. 提交并推送仓库改名后的地址同步修改。
-2. 在 GitHub Actions 中手动运行一次 `github-feed-dry-run`。
-3. 再运行一次 `github-only`，确认能够生成并提交真实的 `feed-github.json`。
-4. 使用生成的真实 Feed 完成一次 AI 周报和终端输出验收。
-5. 线上验证完成后，更新本记录的状态和测试结果。
+1. 使用已经生成的真实 Feed 完成一次 AI 周报生成验收。
+2. 使用终端输出方式检查最终周报的展示效果。
+3. 如需主动通知，再单独配置并测试 Telegram 或邮件推送；这两种方式需要用户提供密钥。
+
+原计划先运行 `github-feed-dry-run`，但首次手动操作实际选择了默认的 `github-only`。
+正式模式已经成功生成并提交 Feed，因此没有为了补齐流程而重复触发 dry-run，避免无意义地
+重复调用 GitHub API。
 
 本地无法完成完整 GitHub API dry-run，因为 SSH 部署密钥只能用于 Git 推送，不能作为
 GitHub API Token。GitHub Actions 会自动提供 `${{ github.token }}`，因此不需要为工作流
